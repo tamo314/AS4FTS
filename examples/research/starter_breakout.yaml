@@ -1,0 +1,24 @@
+# First, small strategy family: 2 lookbacks x 2 stops x 2 targets x 2 costs = 16.
+# Demo/plumbing candidate only. No claim of profitability.
+family_id: starter_breakout
+hypothesis: >-
+  Test whether a close above the preceding N-bar high continues on subsequent bars,
+  and inspect the full parameter surface after fees/slippage rather than one winner.
+factory: n225m_bt.strategies.range_breakout:create_strategy
+implementation_required: false  # Reuse the existing implementation, not another copy.
+dataset: demo  # initial_family in a campaign uses the campaign's dataset instead.
+seed: 314
+uses: [rolling_range, tick_bracket]
+parameters:
+  direction: long
+space:
+  lookback: [3, 5]
+  stop_ticks: [2, 4]
+  target_ticks: [4, 8]
+backtest:
+  mode: day_only
+  fees.jpy_per_side_per_contract: 100
+backtest_space:
+  execution.slippage_ticks: [0, 1]
+constraints:
+  - {left: target_ticks, op: ge, right_param: stop_ticks}

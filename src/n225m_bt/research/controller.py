@@ -11,7 +11,7 @@ from typing import Any
 
 from n225m_bt.research.agents import apply_files, invoke_role, run_process
 from n225m_bt.research.catalog import build_catalog
-from n225m_bt.research.datasets import safe_name, write_json
+from n225m_bt.research.datasets import file_hash, safe_name, write_json
 from n225m_bt.research.runner import read_spec
 
 
@@ -51,8 +51,27 @@ def run_campaign(config_path: Path, root: Path) -> dict[str, Any]:
                            "family_id": active["family_id"], "catalog": catalog,
                            "previous_families": state["history"][-int(config.get("context_families", 3)):],
                            "history_directory": str(folder)}
-                spec = invoke_role(config["roles"]["designer"], _prompt(root, "design", context), root, step / "design")
-                spec = dict(config.get("defaults", {})) | spec
+                initial = config.get("initial_family") if not state["history"] else None
+                if initial:
+                    # A prepared strategy is already designed/implemented: execute it
+                    # once, then feed its complete parameter surface to the next design.
+                    initial_path = (root / initial).resolve()
+                    spec = read_spec(initial_path)
+                    spec["dataset"] = config["dataset"]
+                    active["origin"] = "initial_family"
+                    write_json(step / "initial_family.json", {
+                        "path": str(initial_path), "sha256": file_hash(initial_path), "spec": spec})
+                else:
+                    spec = invoke_role(config["roles"]["designer"], _prompt(root, "design", context), root, step / "design")
+                    active["origin"] = "designer"
+                defaults = config.get("defaults", {})
+                resolved = dict(defaults) | spec
+                # A strategy's mode override must not discard campaign fees or other
+                # execution defaults. Explicit axes still override the same default axis.
+                for key in ("parameters", "backtest", "backtest_space"):
+                    if key in defaults and key in spec:
+                        resolved[key] = dict(defaults[key]) | spec[key]
+                spec = resolved
                 spec["family_id"] = active["family_id"]
                 spec.setdefault("dataset", config["dataset"])
                 write_json(spec_path, spec)
@@ -89,6 +108,7 @@ def run_campaign(config_path: Path, root: Path) -> dict[str, Any]:
                 write_json(state_path, state)
                 return state
             state["history"].append({"family_id": active["family_id"], "hypothesis": spec.get("hypothesis"),
+                                     "origin": active.get("origin", "designer"),
                                      "uses": spec.get("uses", []), "summary": summary,
                                      "artifacts": {"trials": str(Path(summary["identity"]["output"]) / "trials.csv"),
                                                    "interactions": str(Path(summary["identity"]["output"]) / "sensitivity.json"),

@@ -1,30 +1,36 @@
-# Copy to research_agents.local.yaml. CLIs and authentication are already installed.
-# Choose concrete models through these two environment variables, or edit argv.
-campaign_id: first_research
+# Copy to research_agents.local.yaml. Use the already installed/authenticated CLIs.
+# Set each role.model below; no AS4FTS_*_MODEL environment variables are required.
+# null uses that CLI's configured default. Set explicit IDs to separate model costs.
+campaign_id: starter_research_v1
 dataset: demo
-objective: "Explore strategy families on N225M, evaluating whole parameter surfaces and reusing shared components."
-max_families: 3
+initial_family: examples/research/starter_breakout.yaml
+objective: >-
+  Start with the supplied simple range-breakout family. Evaluate the entire parameter
+  surface before designing the next strategy family. Reuse the shared components;
+  do not split minor parameter changes into separate design/implementation loops.
+max_families: 2  # Includes the prepared first family; the next family uses the AI roles.
 workers: 2
 max_repairs: 2
 context_families: 3
-# Optional: a timeout PAUSES the current batch; it never reduces its parameter space.
+# Optional: a timeout PAUSES the batch; it never reduces the declared parameter space.
 # batch_timeout_seconds: 3600
 roles:
   designer:
-    argv: [codex, exec, --sandbox, read-only, --model, '${AS4FTS_DESIGN_MODEL}', -o, '{output}', '-']
+    model: null  # Replace null with "your actual high-cost model ID".
+    argv: [codex, exec, --sandbox, read-only, --model, '{model}', -o, '{output}', '-']
     stdin: true
     timeout_seconds: 600
   implementer:
-    argv: [claude, '-p', '{prompt}', --model, '${AS4FTS_IMPLEMENT_MODEL}', --output-format, json]
+    model: null  # Replace null with "your actual low-cost model ID".
+    argv: [claude, '-p', '{prompt}', --model, '{model}', --output-format, json]
     stdin: false
     timeout_seconds: 600
-# Any already configured CLI (including Antigravity) uses the same argv contract.
-# Substitute its existing headless/print command or your wrapper, which accepts the
-# prompt via stdin or {prompt} and emits JSON on stdout or writes {output}.
-# No guessed executable/model name or provider SDK is required by the controller.
+# Use your configured Antigravity command/wrapper by replacing argv; keep {model}
+# where the CLI accepts its model ID. No CLI installation or login is performed.
+# To let AI design from the very first family, set initial_family: null.
 defaults:
   backtest:
     mode: day_only
-    fees.jpy_per_side_per_contract: 100
+    fees.jpy_per_side_per_contract: 100  # Example, not a verified broker fee.
   backtest_space:
-    execution.slippage_ticks: [0, 1, 2]
+    execution.slippage_ticks: [0, 1]

@@ -75,19 +75,51 @@ def decode_payload(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
     return raw, metadata
 
 
+def build_arguments(role: dict[str, Any], prompt: str, output: Path) -> list[str]:
+    """Bind YAML role.model without requiring shell environment variables.
+
+    A null/blank model uses the CLI's configured default by removing the explicit
+    --model/-m pair. Legacy ${AS4FTS_*_MODEL} templates remain supported; a direct
+    model value takes precedence. Substitution never interprets prompt contents.
+    """
+    template = role.get("argv")
+    if not isinstance(template, list) or not template or not all(isinstance(a, str) for a in template):
+        raise ValueError("role.argv must be a nonempty string array")
+    model = role.get("model")
+    if model is not None and not isinstance(model, str):
+        raise ValueError("role.model must be a model ID string or null")
+    model = model.strip() if isinstance(model, str) else None
+    model = model or None
+    legacy = ("${AS4FTS_DESIGN_MODEL}", "${AS4FTS_IMPLEMENT_MODEL}")
+    tokens = list(template)
+    if model is not None:
+        tokens = [token.replace(legacy[0], "{model}").replace(legacy[1], "{model}") for token in tokens]
+        if not any("{model}" in token for token in tokens):
+            raise ValueError("role.model is set but role.argv has no {model} placeholder")
+    arguments: list[str] = []
+    replacements = {"prompt": prompt, "output": str(output), "model": model or ""}
+    for token in tokens:
+        if "{model}" in token and model is None:
+            if token == "{model}" and arguments and arguments[-1] in {"--model", "-m"}:
+                arguments.pop()
+                continue
+            if token == "--model={model}":
+                continue
+            raise ValueError("null role.model requires --model {model}, -m {model}, or --model={model}")
+        expanded = os.path.expandvars(token)
+        if re.search(r"\$\{[^}]+\}", expanded):
+            raise ValueError(f"unresolved environment variable in command: {token}")
+        arguments.append(re.sub(r"\{(prompt|output|model)\}",
+                                lambda match: replacements[match.group(1)], expanded))
+    return arguments
+
+
 def invoke_role(role: dict[str, Any], prompt: str, root: Path,
                 folder: Path) -> dict[str, Any]:
     folder.mkdir(parents=True, exist_ok=True)
     output = folder / "output.json"
     template = role["argv"]
-    if not isinstance(template, list) or not template or not all(isinstance(a, str) for a in template):
-        raise ValueError("role.argv must be a nonempty string array")
-    arguments = []
-    for token in template:
-        expanded = os.path.expandvars(token)
-        if re.search(r"\$\{[^}]+\}", expanded):
-            raise ValueError(f"unresolved environment variable in command: {token}")
-        arguments.append(expanded.replace("{prompt}", prompt).replace("{output}", str(output)))
+    arguments = build_arguments(role, prompt, output)
     request_id = digest({"argv": arguments, "prompt": prompt})
     response_file = folder / "response.json"
     if response_file.exists():
@@ -107,6 +139,7 @@ def invoke_role(role: dict[str, Any], prompt: str, root: Path,
     write_json(response_file, {"request_id": request_id, "payload": payload,
                               "elapsed_seconds": time.perf_counter() - start,
                               "metadata": metadata,
+                              "requested_model": role.get("model"),
                               "note": "Unreported costs/usage are unknown, never assumed zero."})
     return payload
 
