@@ -1,0 +1,30 @@
+# Copy to research_agents.local.yaml. CLIs and authentication are already installed.
+# Choose concrete models through these two environment variables, or edit argv.
+campaign_id: first_research
+dataset: demo
+objective: "Explore strategy families on N225M, evaluating whole parameter surfaces and reusing shared components."
+max_families: 3
+workers: 2
+max_repairs: 2
+context_families: 3
+# Optional: a timeout PAUSES the current batch; it never reduces its parameter space.
+# batch_timeout_seconds: 3600
+roles:
+  designer:
+    argv: [codex, exec, --sandbox, read-only, --model, '${AS4FTS_DESIGN_MODEL}', -o, '{output}', '-']
+    stdin: true
+    timeout_seconds: 600
+  implementer:
+    argv: [claude, '-p', '{prompt}', --model, '${AS4FTS_IMPLEMENT_MODEL}', --output-format, json]
+    stdin: false
+    timeout_seconds: 600
+# Any already configured CLI (including Antigravity) uses the same argv contract.
+# Substitute its existing headless/print command or your wrapper, which accepts the
+# prompt via stdin or {prompt} and emits JSON on stdout or writes {output}.
+# No guessed executable/model name or provider SDK is required by the controller.
+defaults:
+  backtest:
+    mode: day_only
+    fees.jpy_per_side_per_contract: 100
+  backtest_space:
+    execution.slippage_ticks: [0, 1, 2]
