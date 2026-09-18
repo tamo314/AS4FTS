@@ -22,3 +22,10 @@ results/
 # Local overrides
 config/local*.yaml
 .env
+
+# Local research state, agent transcripts, snapshots and credentials
+.research/
+config/*agents.local.yaml
+config/*agents.local.json
+.env.*
+!.env.example

@@ -11,15 +11,7 @@ from n225m_bt.backtest.portfolio import Portfolio
 from n225m_bt.calendar.classifier import CalendarClassifier
 from n225m_bt.config import BacktestConfig
 from n225m_bt.domain import (
-    Bar,
-    ExitReason,
-    InstrumentSpec,
-    Position,
-    Session,
-    Side,
-    Signal,
-    SignalAction,
-    Trade,
+    Bar, ExitReason, InstrumentSpec, Position, Session, Side, Signal, SignalAction, Trade,
 )
 from n225m_bt.strategies.base import HistoryView, Strategy, StrategyContext
 
@@ -46,73 +38,78 @@ class BacktestEngine:
     ) -> None:
         self.spec, self.config, self.classifier = spec, config, classifier
 
-    def run(self, bars: list[Bar], strategy: Strategy, parameter_hash: str = "") -> BacktestResult:
-        ordered = sorted(bars, key=lambda bar: bar.ts_jst)
+    def run(self, bars: list[Bar], strategy: Strategy, parameter_hash: str = "", *,
+            assume_sorted: bool = False) -> BacktestResult:
+        """A batch may reuse already sorted immutable bars; strategy state is per run."""
+        ordered = bars if assume_sorted else sorted(bars, key=lambda bar: bar.ts_jst)
         portfolio = Portfolio(
-            self.spec,
-            self.config.fees.jpy_per_side_per_contract,
-            strategy.strategy_id,
-            strategy.strategy_version,
-            parameter_hash,
+            self.spec, self.config.fees.jpy_per_side_per_contract,
+            strategy.strategy_id, strategy.strategy_version, parameter_hash,
         )
         pending: PendingOrder | None = None
         canceled = 0
         history: list[Bar] = []
         history_view = HistoryView(history)
         equity: list[int] = []
+        realized = 0
+        accounted = 0
+        last_eligible: Bar | None = None
+        boundaries: dict[tuple[date, Session], tuple[datetime, datetime]] = {}
         for bar in ordered:
             if not bar.is_eligible or not self._mode_allows(bar):
                 continue
+            last_eligible = bar
+            key = (bar.trade_date, bar.session)
+            if key not in boundaries:
+                close = self.classifier.session_close(*key)
+                boundaries[key] = (
+                    close - timedelta(minutes=self.config.risk.new_entry_cutoff_minutes_before_session_close),
+                    close - timedelta(minutes=self.config.risk.force_flat_minutes_before_session_close),
+                )
+            entry_cutoff, force_flat = boundaries[key]
             if pending is not None:
                 if (
                     not self.config.execution.allow_cross_session_pending_order
-                    and (
-                        pending.created_trade_date != bar.trade_date
-                        or pending.created_session is not bar.session
-                    )
-                ) or self._delay_exceeded(pending.signal.timestamp, bar.ts_jst):
-                    pending = None
+                    and (pending.created_trade_date != bar.trade_date
+                         or pending.created_session is not bar.session)
+                ) or self._delay_exceeded(pending.signal.timestamp, bar.ts_jst) or (
+                    pending.side is not None and bar.ts_jst >= entry_cutoff
+                ):
                     canceled += 1
                 else:
                     self._apply_pending(portfolio, pending, bar)
-                    pending = None
+                pending = None
             if portfolio.position is not None:
                 portfolio.update_excursion(bar.high, bar.low)
                 protective = protective_exit(portfolio.position, bar)
                 if protective is not None:
                     fill = adverse_fill(
-                        protective.reference_price,
-                        not portfolio.position.side.close_is_sell,
-                        self.config.execution.slippage_ticks,
-                        self.spec,
+                        protective.reference_price, not portfolio.position.side.close_is_sell,
+                        self.config.execution.slippage_ticks, self.spec,
                     )
-                    portfolio.exit(
-                        bar.ts_jst, None, protective.reference_price, fill, protective.reason
-                    )
-            if (
-                portfolio.position is not None
-                and self.config.risk.force_flat
-                and self._at_force_flat(bar)
-            ):
+                    portfolio.exit(bar.ts_jst, None, protective.reference_price, fill, protective.reason)
+            if (portfolio.position is not None and self.config.risk.force_flat
+                    and bar.ts_jst >= force_flat):
                 self._force_flat(portfolio, bar)
             history.append(bar)
-            if pending is None and not self._entry_cutoff(bar):
-                signal = strategy.on_bar(
-                    StrategyContext(history_view, portfolio.position is not None), bar
-                )
-                if signal is not None:
-                    pending = self._pending_from_signal(signal, bar, portfolio.position is not None)
-            equity.append(sum(item.net_pnl_jpy for item in portfolio.trades))
-        if portfolio.position is not None and ordered:
-            last = ordered[-1]
-            reference = last.close
+            # Exit decisions and indicator updates remain available after entry cutoff.
+            signal = strategy.on_bar(StrategyContext(history_view, portfolio.position is not None), bar)
+            if signal is not None and (signal.action is SignalAction.EXIT or bar.ts_jst < entry_cutoff):
+                pending = self._pending_from_signal(signal, bar, portfolio.position is not None)
+            for trade in portfolio.trades[accounted:]:
+                realized += trade.net_pnl_jpy
+            accounted = len(portfolio.trades)
+            equity.append(realized)
+        if pending is not None:
+            canceled += 1
+        if portfolio.position is not None and last_eligible is not None:
             fill = adverse_fill(
-                reference,
-                not portfolio.position.side.close_is_sell,
-                self.config.execution.slippage_ticks,
-                self.spec,
+                last_eligible.close, not portfolio.position.side.close_is_sell,
+                self.config.execution.slippage_ticks, self.spec,
             )
-            portfolio.exit(last.ts_jst, None, reference, fill, ExitReason.END_OF_DATA)
+            trade = portfolio.exit(last_eligible.ts_jst, None, last_eligible.close, fill, ExitReason.END_OF_DATA)
+            realized += trade.net_pnl_jpy
+            equity[-1] = realized
         return BacktestResult(tuple(portfolio.trades), tuple(equity), canceled)
 
     def _apply_pending(self, portfolio: Portfolio, pending: PendingOrder, bar: Bar) -> None:
@@ -120,57 +117,31 @@ class BacktestEngine:
             if portfolio.position is None:
                 return
             fill = adverse_fill(
-                bar.open,
-                not portfolio.position.side.close_is_sell,
-                self.config.execution.slippage_ticks,
-                self.spec,
+                bar.open, not portfolio.position.side.close_is_sell,
+                self.config.execution.slippage_ticks, self.spec,
             )
-            portfolio.exit(
-                bar.ts_jst, pending.signal.timestamp, bar.open, fill, pending.exit_reason
-            )
+            portfolio.exit(bar.ts_jst, pending.signal.timestamp, bar.open, fill, pending.exit_reason)
             return
         if pending.side is None or portfolio.position is not None:
             return
-        fill = adverse_fill(
-            bar.open, pending.side is Side.LONG, self.config.execution.slippage_ticks, self.spec
-        )
-        portfolio.enter(
-            Position(
-                pending.side,
-                1,
-                bar.ts_jst,
-                pending.signal.timestamp,
-                bar.open,
-                fill,
-                bar.trade_date,
-                pending.signal.stop_price,
-                pending.signal.target_price,
-                entry_reason=pending.signal.reason,
-                entry_session=bar.session,
-                entry_roll_risk=bar.roll_risk,
-            )
-        )
+        fill = adverse_fill(bar.open, pending.side is Side.LONG, self.config.execution.slippage_ticks, self.spec)
+        portfolio.enter(Position(
+            pending.side, 1, bar.ts_jst, pending.signal.timestamp, bar.open, fill,
+            bar.trade_date, pending.signal.stop_price, pending.signal.target_price,
+            entry_reason=pending.signal.reason, entry_session=bar.session, entry_roll_risk=bar.roll_risk,
+        ))
 
     def _force_flat(self, portfolio: Portfolio, bar: Bar) -> None:
-        """Risk policy exit: current eligible bar close, never carried into another session."""
+        """Risk policy exit at the current eligible bar close."""
         assert portfolio.position is not None
-        fill = adverse_fill(
-            bar.close,
-            not portfolio.position.side.close_is_sell,
-            self.config.execution.slippage_ticks,
-            self.spec,
-        )
+        fill = adverse_fill(bar.close, not portfolio.position.side.close_is_sell,
+                            self.config.execution.slippage_ticks, self.spec)
         portfolio.exit(bar.ts_jst, bar.ts_jst, bar.close, fill, ExitReason.FORCE_FLAT)
 
-    def _pending_from_signal(
-        self, signal: Signal, bar: Bar, has_position: bool
-    ) -> PendingOrder | None:
+    def _pending_from_signal(self, signal: Signal, bar: Bar, has_position: bool) -> PendingOrder | None:
         if signal.action is SignalAction.EXIT:
-            return (
-                PendingOrder(signal, None, bar.session, bar.trade_date, ExitReason.SIGNAL)
-                if has_position
-                else None
-            )
+            return (PendingOrder(signal, None, bar.session, bar.trade_date, ExitReason.SIGNAL)
+                    if has_position else None)
         if has_position:
             return None
         side = Side.LONG if signal.action is SignalAction.ENTER_LONG else Side.SHORT
@@ -184,12 +155,8 @@ class BacktestEngine:
 
     def _entry_cutoff(self, bar: Bar) -> bool:
         close = self.classifier.session_close(bar.trade_date, bar.session)
-        return bar.ts_jst >= close - timedelta(
-            minutes=self.config.risk.new_entry_cutoff_minutes_before_session_close
-        )
+        return bar.ts_jst >= close - timedelta(minutes=self.config.risk.new_entry_cutoff_minutes_before_session_close)
 
     def _at_force_flat(self, bar: Bar) -> bool:
         close = self.classifier.session_close(bar.trade_date, bar.session)
-        return bar.ts_jst >= close - timedelta(
-            minutes=self.config.risk.force_flat_minutes_before_session_close
-        )
+        return bar.ts_jst >= close - timedelta(minutes=self.config.risk.force_flat_minutes_before_session_close)

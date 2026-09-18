@@ -1,0 +1,18 @@
+family_id: breakout_demo
+hypothesis: "Prior-window breakout across a declared finite space. Demonstration only."
+factory: n225m_bt.strategies.range_breakout:create_strategy
+dataset: demo
+seed: 314
+uses: [rolling_range, tick_bracket]
+space:
+  lookback: [3, 5, 8]
+  stop_ticks: {start: 2, stop: 4, step: 2}
+  target_ticks: [4, 8]
+  direction: [long, short]
+backtest:
+  mode: day_only
+  fees.jpy_per_side_per_contract: 100
+backtest_space:
+  execution.slippage_ticks: [0, 1]
+constraints:
+  - {left: target_ticks, op: ge, right_param: stop_ticks}
