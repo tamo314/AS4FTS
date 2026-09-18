@@ -2,8 +2,31 @@
 
 Research-grade, deterministic one-minute Nikkei 225 mini futures backtesting.
 
+## Strategy-family research (AS4FTS)
+
+One loop = hypothesis/design + one parameterized implementation + the **entire declared parameter space** + family-level evaluation. Shared components accumulate across loops and are automatically cataloged for the next designer.
+
 ```powershell
-python -m pip install -e ".[dev]"
+uv sync --group dev
+uv run python -m n225m_bt.research dataset-register demo --synthetic-days 3
+uv run python -m n225m_bt.research run examples/research/breakout.yaml --workers 2
+uv run python -m n225m_bt.research catalog
+```
+
+The example runs 48 synthetic-data cases, not a claim of profitable trading. Read [the Japanese quickstart](docs/research/QUICKSTART.md), [implementation plan](docs/research/IMPLEMENTATION_PLAN.md), and [validation scope](docs/research/VALIDATION.md).
+
+Copy `config/research_agents.example.yaml` to `config/research_agents.local.yaml`, choose already configured CLI commands/models, then run:
+
+```powershell
+uv run python -m n225m_bt.research loop --config config/research_agents.local.yaml
+```
+
+The research module is the new entry point. The original `n225m-bt backtest run` below remains an always-flat baseline, not the strategy-family runner. No agent installation/login or pre-backtest hypothesis/design approval is part of ordinary research.
+
+## Original platform commands
+
+```powershell
+python -m pip install -e .
 pytest
 ruff check .
 ruff format --check .
@@ -11,8 +34,7 @@ mypy
 n225m-bt --help
 ```
 
-Actual 225Labo files remain local under `data/raw/` and are never read directly
-by the backtest engine.
+Use `uv sync --group dev` for the development tools above. Actual 225Labo files remain local under `data/raw/` and are never read directly by the backtest engine.
 
 ## Local-data onboarding
 
