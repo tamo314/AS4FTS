@@ -1,0 +1,24 @@
+schema_name: ose_trade_calendar
+schema_version: 1
+fields:
+- name: trade_date
+  type: date
+  nullable: false
+- name: previous_trade_date
+  type: date
+  nullable: true
+- name: next_trade_date
+  type: date
+  nullable: true
+- name: night_calendar_start_date
+  type: date
+  nullable: true
+- name: is_holiday_trading_day
+  type: bool
+  nullable: false
+- name: schedule_version
+  type: string
+  nullable: false
+- name: source_note
+  type: string
+  nullable: true

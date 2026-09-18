@@ -1,0 +1,41 @@
+schema_version: 1
+timezone: Asia/Tokyo
+instrument: N225M
+
+# `session_*` are overall exchange session boundaries used for classification.
+# `regular_*` / `closing_auction` may be omitted where this package has not
+# frozen a finer historical microstructure rule.
+regimes:
+  - id: ose_n225m_2016_jgate_to_20210920
+    effective_from: 2016-07-19
+    effective_to: 2021-09-20
+    day:
+      session_open: "08:45"
+      session_close: "15:15"
+    night:
+      session_open: "16:30"
+      session_close_next_day: "05:30"
+
+  - id: ose_n225m_jgate30_to_20241104
+    effective_from: 2021-09-21
+    effective_to: 2024-11-04
+    day:
+      session_open: "08:45"
+      session_close: "15:15"
+    night:
+      session_open: "16:30"
+      session_close_next_day: "06:00"
+
+  - id: ose_n225m_from_20241105
+    effective_from: 2024-11-05
+    effective_to: null
+    day:
+      session_open: "08:45"
+      regular_end: "15:40"
+      closing_auction: "15:45"
+      session_close: "15:45"
+    night:
+      session_open: "17:00"
+      regular_end_next_day: "05:55"
+      closing_auction_next_day: "06:00"
+      session_close_next_day: "06:00"

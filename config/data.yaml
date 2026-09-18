@@ -1,0 +1,41 @@
+schema_version: 1
+source: 225labo
+instrument: N225M
+series_type: center_continuous
+bar_interval: 1m
+
+raw_root: data/raw/225labo/center
+bronze_root: data/bronze
+silver_root: data/silver
+gold_root: data/gold
+
+source_format:
+  worksheet: "1min"
+  encoding: auto
+  delimiter: auto
+  header: auto
+  # 225Labo's 日付 is the OSE trade date: the preceding evening and the
+  # following morning/day session share this value.
+  source_date_semantics: ose_trade_date
+  source_mapping:
+    date: "日付"
+    time: "時間"
+    open: "始値"
+    high: "高値"
+    low: "安値"
+    close: "終値"
+    volume: "出来高"
+
+quality:
+  mode: strict
+  tick_grid_check: true
+  expected_tick_size: 5
+  detect_missing_minutes: true
+  detect_statistical_outliers: true
+  outlier_return_sigma: 12.0
+
+parquet:
+  compression: zstd
+  partition_by:
+    - year
+    - month

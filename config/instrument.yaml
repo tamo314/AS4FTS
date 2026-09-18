@@ -1,0 +1,11 @@
+schema_version: 1
+instrument:
+  symbol: N225M
+  name: Nikkei 225 mini
+  exchange: OSE
+  currency: JPY
+  timezone: Asia/Tokyo
+  price_type: integer_jpy
+  contract_multiplier: 100
+  tick_size: 5
+  tick_value: 500

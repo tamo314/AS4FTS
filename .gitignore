@@ -1,0 +1,24 @@
+# Rename/copy to .gitignore in the implementation repository
+.venv/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+.pytest_tmp/
+.test-artifacts/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+.DS_Store
+
+# Proprietary / local market data
+data/raw/
+data/bronze/
+data/silver/
+data/gold/
+
+# Backtest outputs
+results/
+
+# Local overrides
+config/local*.yaml
+.env

@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "n225m-bt"
+version = "0.1.0"
+description = "Reproducible N225 mini one-minute backtesting platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "polars>=1.24,<2",
+  "pyarrow>=19,<24",
+  "pydantic>=2.10,<3",
+  "openpyxl>=3.1,<4", # Required to read user-provided 225Labo XLSX source files.
+  "PyYAML>=6.0,<7",
+  "typer>=0.15,<1",
+  "tzdata>=2025.1",
+]
+
+[project.scripts]
+n225m-bt = "n225m_bt.cli:app"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/n225m_bt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --basetemp=.pytest_tmp"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "B007", "B008", "RUF007", "UP017", "UP042", "UP047"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["yaml"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["openpyxl"]
+ignore_missing_imports = true

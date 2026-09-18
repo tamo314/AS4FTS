@@ -1,0 +1,75 @@
+schema_name: n225m_trade_ledger
+schema_version: 1
+fields:
+- name: trade_id
+  type: string
+  nullable: false
+- name: trade_date
+  type: date
+  nullable: false
+- name: side
+  type: enum(long,short)
+  nullable: false
+- name: qty
+  type: int64
+  nullable: false
+- name: entry_signal_ts
+  type: datetime[ns, Asia/Tokyo]
+  nullable: false
+- name: entry_ts
+  type: datetime[ns, Asia/Tokyo]
+  nullable: false
+- name: entry_reference_price
+  type: int64
+  nullable: false
+- name: entry_fill_price
+  type: int64
+  nullable: false
+- name: exit_signal_ts
+  type: datetime[ns, Asia/Tokyo]
+  nullable: true
+- name: exit_ts
+  type: datetime[ns, Asia/Tokyo]
+  nullable: false
+- name: exit_reference_price
+  type: int64
+  nullable: false
+- name: exit_fill_price
+  type: int64
+  nullable: false
+- name: gross_pnl_jpy
+  type: int64
+  nullable: false
+- name: fees_jpy
+  type: int64
+  nullable: false
+- name: slippage_cost_jpy
+  type: int64
+  nullable: false
+- name: net_pnl_jpy
+  type: int64
+  nullable: false
+- name: mae_jpy
+  type: int64
+  nullable: false
+- name: mfe_jpy
+  type: int64
+  nullable: false
+- name: holding_minutes
+  type: int64
+  nullable: false
+- name: entry_reason
+  type: string
+  nullable: false
+- name: exit_reason
+  type: string
+  nullable: false
+- name: strategy_id
+  type: string
+  nullable: false
+- name: strategy_version
+  type: string
+  nullable: false
+- name: parameter_hash
+  type: string
+  nullable: false

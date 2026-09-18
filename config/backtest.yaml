@@ -1,0 +1,37 @@
+schema_version: 1
+instrument: N225M
+
+mode: full_session  # day_only | night_only | full_session
+position:
+  quantity: 1
+  max_open_positions: 1
+  pyramiding: false
+  averaging_down: false
+
+execution:
+  signal_timing: bar_close
+  market_fill_timing: next_eligible_bar_open
+  slippage_ticks: 1
+  intrabar_policy: conservative
+  max_fill_delay_minutes: 10
+  allow_cross_session_pending_order: false
+  reverse_policy: close_only_then_wait
+
+risk:
+  new_entry_cutoff_minutes_before_session_close: 15
+  force_flat: true
+  force_flat_minutes_before_session_close: 5
+
+fees:
+  model: per_side_per_contract
+  jpy_per_side_per_contract: 0
+
+reporting:
+  slippage_stress_ticks: [0, 1, 2, 3]
+  segments:
+    - year
+    - month
+    - weekday
+    - session
+    - hour
+    - roll_risk
