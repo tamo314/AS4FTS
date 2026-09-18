@@ -12,6 +12,7 @@ from typing import Any
 from n225m_bt.research.agents import apply_files, invoke_role, run_process
 from n225m_bt.research.catalog import build_catalog
 from n225m_bt.research.datasets import file_hash, safe_name, write_json
+from n225m_bt.research.prompt_files import resolve_objective
 from n225m_bt.research.runner import read_spec
 
 
@@ -62,6 +63,7 @@ def run_campaign(config_path: Path, root: Path) -> dict[str, Any]:
                     write_json(step / "initial_family.json", {
                         "path": str(initial_path), "sha256": file_hash(initial_path), "spec": spec})
                 else:
+                    context["objective"] = resolve_objective(root, config, step)
                     spec = invoke_role(config["roles"]["designer"], _prompt(root, "design", context), root, step / "design")
                     active["origin"] = "designer"
                 defaults = config.get("defaults", {})

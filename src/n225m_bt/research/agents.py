@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from n225m_bt.research.agent_output import decode_payload, encode_stdin
 from n225m_bt.research.datasets import file_hash, write_json
 from n225m_bt.research.space import digest
 
@@ -39,40 +40,6 @@ def run_process(argv: list[str], root: Path, stdout: Path, stderr: Path, *,
             process.communicate()
             raise
         return int(process.returncode)
-
-
-def decode_payload(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Accept plain JSON, fenced JSON, Claude result envelopes or final JSONL events."""
-    text = text.strip()
-    if text.startswith("```") and text.endswith("```"):
-        text = "\n".join(text.splitlines()[1:-1])
-    try:
-        raw = json.loads(text)
-    except json.JSONDecodeError:
-        candidates = []
-        for line in text.splitlines():
-            try:
-                candidates.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        if not candidates:
-            raise ValueError("agent did not return JSON") from None
-        for candidate in reversed(candidates):
-            if isinstance(candidate, dict) and ("structured_output" in candidate or "result" in candidate):
-                return decode_payload(json.dumps(candidate))
-            if isinstance(candidate, dict) and candidate.get("item", {}).get("type") == "agent_message":
-                return decode_payload(candidate["item"]["text"])
-        raise ValueError("no final structured result in agent events") from None
-    if not isinstance(raw, dict):
-        raise ValueError("agent output must be a JSON object")
-    metadata = {"usage": raw.get("usage"), "reported_cost_usd": raw.get("total_cost_usd"),
-                "model": raw.get("model"), "session_id": raw.get("session_id")}
-    if isinstance(raw.get("structured_output"), dict):
-        return raw["structured_output"], metadata
-    if isinstance(raw.get("result"), str):
-        payload, _ = decode_payload(raw["result"])
-        return payload, metadata
-    return raw, metadata
 
 
 def build_arguments(role: dict[str, Any], prompt: str, output: Path) -> list[str]:
@@ -120,7 +87,12 @@ def invoke_role(role: dict[str, Any], prompt: str, root: Path,
     output = folder / "output.json"
     template = role["argv"]
     arguments = build_arguments(role, prompt, output)
-    request_id = digest({"argv": arguments, "prompt": prompt})
+    uses_stdin = role.get("stdin", not any("{prompt}" in t for t in template))
+    if role.get("stdin_format", "text") != "text" and not uses_stdin:
+        raise ValueError("structured stdin requires role.stdin: true")
+    input_text = encode_stdin(prompt, role) if uses_stdin else ""
+    request_id = digest({"argv": arguments, "prompt": prompt,
+                         "stdin_format": role.get("stdin_format", "text"), "decoder_version": 2})
     response_file = folder / "response.json"
     if response_file.exists():
         old = json.loads(response_file.read_text(encoding="utf-8"))
@@ -130,8 +102,7 @@ def invoke_role(role: dict[str, Any], prompt: str, root: Path,
     (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
     start = time.perf_counter()
     code = run_process(arguments, root, folder / "stdout.log", folder / "stderr.log",
-                       prompt=prompt if role.get("stdin", not any("{prompt}" in t for t in template)) else "",
-                       timeout=role.get("timeout_seconds"))
+                       prompt=input_text, timeout=role.get("timeout_seconds"))
     if code:
         raise RuntimeError(f"CLI exited {code}; see {folder / 'stderr.log'}")
     text = output.read_text(encoding="utf-8") if output.exists() else (folder / "stdout.log").read_text(encoding="utf-8")
@@ -149,7 +120,9 @@ def apply_files(payload: dict[str, Any], root: Path, folder: Path) -> list[dict[
     root = root.resolve()
     allowed = [(root / "src/n225m_bt/components").resolve(),
                (root / "src/n225m_bt/strategies").resolve()]
-    items = payload.get("files", [])
+    if "files" not in payload:
+        raise ValueError("implementation response is missing files; expected decoded code JSON")
+    items = payload["files"]
     if not isinstance(items, list):
         raise ValueError("implementation files must be an array")
     planned = []

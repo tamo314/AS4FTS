@@ -1,0 +1,44 @@
+[
+  {
+    "id": "H01",
+    "title": "寄付レンジ突破",
+    "objective_file": "prompts/research/hypotheses/H01_opening_range_breakout.md",
+    "planned_trials": 288,
+    "mode": "day_only"
+  },
+  {
+    "id": "H02",
+    "title": "寄付レンジ突破失敗の逆張り",
+    "objective_file": "prompts/research/hypotheses/H02_opening_range_failure.md",
+    "planned_trials": 432,
+    "mode": "day_only"
+  },
+  {
+    "id": "H03",
+    "title": "値幅縮小後のブレイクアウト",
+    "objective_file": "prompts/research/hypotheses/H03_compression_breakout.md",
+    "planned_trials": 288,
+    "mode": "day_only"
+  },
+  {
+    "id": "H04",
+    "title": "強い初動後の押し目・戻り売り",
+    "objective_file": "prompts/research/hypotheses/H04_impulse_pullback.md",
+    "planned_trials": 288,
+    "mode": "day_only"
+  },
+  {
+    "id": "H05",
+    "title": "夜間の方向性と日中寄付後の反応",
+    "objective_file": "prompts/research/hypotheses/H05_night_day_response.md",
+    "planned_trials": 432,
+    "mode": "full_session"
+  },
+  {
+    "id": "H06",
+    "title": "引け前の継続・反転",
+    "objective_file": "prompts/research/hypotheses/H06_preclose_response.md",
+    "planned_trials": 432,
+    "mode": "day_only"
+  }
+]

@@ -1,0 +1,42 @@
+# Merge these settings into your existing LOCAL config; keep the working designer path.
+# The CLI is already installed/authenticated. No environment-variable model setup.
+campaign_id: h01_agy_v1
+dataset: center-auto-v1  # Use your registered dataset name; no re-registration needed.
+initial_family: null  # Otherwise the old prepared starter bypasses this hypothesis.
+objective: "選択した初期戦略を一度実装し、宣言した全パラメータを実行する。"
+objective_file: prompts/research/hypotheses/H01_opening_range_breakout.md
+max_families: 1  # One complete hypothesis surface; not one parameter point.
+workers: 2
+max_repairs: 2
+context_families: 3
+roles:
+  designer:
+    model: null  # Keep your configured model ID and resolved executable path.
+    argv: [codex, exec, --sandbox, read-only, --model, '{model}', -o, '{output}', '-']
+    stdin: true
+    timeout_seconds: 7200
+  implementer:
+    model: null  # Select an exact slug listed by `agy models` to pin the model.
+    argv:
+      - agy  # On Windows use the resolved full path when necessary.
+      - --input-format
+      - stream-json
+      - --output-format
+      - stream-json
+      - --model
+      - '{model}'
+      - --json-schema
+      - schemas/research_implementation.schema.json
+      - --print-timeout
+      - 120m
+    stdin: true
+    stdin_format: agy_stream_json
+    timeout_seconds: 7260
+# No -p/{prompt} in stream-input mode. One JSON user event is sent via stdin.
+# No all-permission bypass; code is returned as JSON for the controller to apply.
+defaults:
+  backtest:
+    mode: day_only  # H05 explicitly overrides this to full_session for observation.
+    fees.jpy_per_side_per_contract: 100  # Comparative assumption, not a broker quote.
+  backtest_space:
+    execution.slippage_ticks: [0, 1, 2]
