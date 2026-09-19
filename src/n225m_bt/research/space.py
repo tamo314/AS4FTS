@@ -100,7 +100,13 @@ def trials(spec: Mapping[str, Any]) -> Iterator[dict[str, Any]]:
     if not isinstance(variants, list) or not variants:
         raise ValueError("variants must be a nonempty list")
     seen: set[str] = set()
-    for variant in variants:
+    for index, variant in enumerate(variants):
+        if not isinstance(variant, dict):
+            raise ValueError(f"variants[{index}] must be a mapping")
+        unsupported = set(variant) - {"parameters", "space", "backtest", "backtest_space", "constraints", "id", "name", "description"}
+        if unsupported:
+            raise ValueError(f"variants[{index}] has unsupported execution fields {sorted(unsupported)}; "
+                             "use constraints for conditions and parameters for fixed values; nothing was silently ignored")
         parameters = dict(spec.get("parameters", {})) | variant.get("parameters", {})
         space = dict(spec.get("space", {})) | variant.get("space", {})
         execution = dict(spec.get("backtest", {})) | variant.get("backtest", {})

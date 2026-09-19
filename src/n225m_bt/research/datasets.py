@@ -21,12 +21,10 @@ def safe_name(value: str) -> str:
 
 
 def write_json(path: Path, value: object) -> None:
-    """Same-filesystem replace: an interrupted write never leaves partial JSON."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + ".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2,
-                               allow_nan=False, default=str) + "\n", encoding="utf-8")
-    temp.replace(path)
+    """Preserve the previous file until a bounded, atomic replacement succeeds."""
+    from n225m_bt.research.storage import atomic_text
+    atomic_text(path, json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2,
+                                allow_nan=False, default=str) + "\n")
 
 
 def file_hash(path: Path) -> str:

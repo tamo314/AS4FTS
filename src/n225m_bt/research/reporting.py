@@ -93,6 +93,14 @@ def write_report(output: Path, rows: list[dict[str, Any]], planned: int,
                "status": ("complete_with_failures" if coverage["failed"] else "complete") if len(rows) == planned else "partial",
                "distribution": _stats(rows), "marginal": marginal,
                "note": "Exploratory full-space evidence; not independent out-of-sample confirmation."}
+    summary["diagnostics_summary"] = {
+        "zero_trade_cases": sum(r["status"] == "ok" and r.get("metrics", {}).get("trade_count") == 0 for r in rows),
+        "diagnostics_available_cases": sum(r.get("diagnostics", {}).get("available", False) for r in rows),
+        "note": "Zero trades are reported, not classified as strategy failure or rejection."}
+    write_json(output / "diagnostics.json", [{"trial_id": r["trial_id"],
+               "diagnostics": r.get("diagnostics", {"available": False}),
+               "entry_signals_returned": r.get("metrics", {}).get("entry_signals_returned"),
+               "canceled_orders": r.get("metrics", {}).get("canceled_orders")} for r in rows])
     write_json(output / "summary.json", summary)
     write_json(output / "sensitivity.json", {"marginal": marginal, "pairwise": pairwise})
     write_json(output / "trials.json", rows)

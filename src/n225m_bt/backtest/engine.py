@@ -30,6 +30,9 @@ class BacktestResult:
     trades: tuple[Trade, ...]
     equity: tuple[int, ...]
     canceled_orders: int
+    entry_signals_returned: int = 0
+    exit_signals_returned: int = 0
+    eligible_bars: int = 0
 
 
 class BacktestEngine:
@@ -53,6 +56,7 @@ class BacktestEngine:
         )
         pending: PendingOrder | None = None
         canceled = 0
+        entry_signals = exit_signals = 0
         history: list[Bar] = []
         history_view = HistoryView(history)
         equity: list[int] = []
@@ -99,6 +103,11 @@ class BacktestEngine:
             history.append(bar)
             # Exit decisions and indicator updates remain available after entry cutoff.
             signal = strategy.on_bar(StrategyContext(history_view, portfolio.position is not None), bar)
+            if signal is not None:
+                if signal.action is SignalAction.EXIT:
+                    exit_signals += 1
+                else:
+                    entry_signals += 1
             if signal is not None and (signal.action is SignalAction.EXIT or bar.ts_jst < entry_cutoff):
                 pending = self._pending_from_signal(signal, bar, portfolio.position is not None)
             for trade in portfolio.trades[accounted:]:
@@ -115,7 +124,8 @@ class BacktestEngine:
             trade = portfolio.exit(last_eligible.ts_jst, None, last_eligible.close, fill, ExitReason.END_OF_DATA)
             realized += trade.net_pnl_jpy
             equity[-1] = realized
-        return BacktestResult(tuple(portfolio.trades), tuple(equity), canceled)
+        return BacktestResult(tuple(portfolio.trades), tuple(equity), canceled,
+                              entry_signals, exit_signals, len(history))
 
     def _apply_pending(self, portfolio: Portfolio, pending: PendingOrder, bar: Bar) -> None:
         if pending.exit_reason is not None:

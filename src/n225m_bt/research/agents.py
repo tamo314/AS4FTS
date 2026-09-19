@@ -6,6 +6,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Any
 from n225m_bt.research.agent_output import decode_payload, encode_stdin
 from n225m_bt.research.datasets import file_hash, write_json
 from n225m_bt.research.space import digest
+from n225m_bt.research.faults import AgentCommandError
+from n225m_bt.research.storage import atomic_text
 
 
 def run_process(argv: list[str], root: Path, stdout: Path, stderr: Path, *,
@@ -21,7 +24,20 @@ def run_process(argv: list[str], root: Path, stdout: Path, stderr: Path, *,
                 extra_env: dict[str, str] | None = None) -> int:
     """No shell interpolation. On timeout kill this invocation's process tree."""
     stdout.parent.mkdir(parents=True, exist_ok=True)
+    root = root.resolve()
     env = dict(os.environ) | (extra_env or {})
+    env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+    if not argv:
+        raise AgentCommandError("empty command")
+    executable = shutil.which(argv[0], path=env.get("PATH"))
+    if executable is None:
+        candidate = (root / argv[0]).resolve()
+        if not candidate.is_file():
+            raise AgentCommandError(f"executable not found: {argv[0]}; configure a resolved CLI path")
+        executable = str(candidate)
+    argv = [executable, *argv[1:]]
+    write_json(stdout.with_name(stdout.name + ".process.json"),
+               {"executable": executable, "cwd": str(root), "timeout_seconds": timeout})
     with stdout.open("w", encoding="utf-8") as out, stderr.open("w", encoding="utf-8") as err:
         process = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.PIPE,
                                    stdout=out, stderr=err, text=True, encoding="utf-8",
@@ -42,7 +58,8 @@ def run_process(argv: list[str], root: Path, stdout: Path, stderr: Path, *,
         return int(process.returncode)
 
 
-def build_arguments(role: dict[str, Any], prompt: str, output: Path) -> list[str]:
+def build_arguments(role: dict[str, Any], prompt: str, output: Path,
+                    root: Path | None = None) -> list[str]:
     """Bind YAML role.model without requiring shell environment variables.
 
     A null/blank model uses the CLI's configured default by removing the explicit
@@ -64,7 +81,7 @@ def build_arguments(role: dict[str, Any], prompt: str, output: Path) -> list[str
         if not any("{model}" in token for token in tokens):
             raise ValueError("role.model is set but role.argv has no {model} placeholder")
     arguments: list[str] = []
-    replacements = {"prompt": prompt, "output": str(output), "model": model or ""}
+    replacements = {"prompt": prompt, "output": str(output), "model": model or "", "root": str((root or Path.cwd()).resolve())}
     for token in tokens:
         if "{model}" in token and model is None:
             if token == "{model}" and arguments and arguments[-1] in {"--model", "-m"}:
@@ -76,7 +93,7 @@ def build_arguments(role: dict[str, Any], prompt: str, output: Path) -> list[str
         expanded = os.path.expandvars(token)
         if re.search(r"\$\{[^}]+\}", expanded):
             raise ValueError(f"unresolved environment variable in command: {token}")
-        arguments.append(re.sub(r"\{(prompt|output|model)\}",
+        arguments.append(re.sub(r"\{(prompt|output|model|root)\}",
                                 lambda match: replacements[match.group(1)], expanded))
     return arguments
 
@@ -86,7 +103,7 @@ def invoke_role(role: dict[str, Any], prompt: str, root: Path,
     folder.mkdir(parents=True, exist_ok=True)
     output = folder / "output.json"
     template = role["argv"]
-    arguments = build_arguments(role, prompt, output)
+    arguments = build_arguments(role, prompt, output, root)
     uses_stdin = role.get("stdin", not any("{prompt}" in t for t in template))
     if role.get("stdin_format", "text") != "text" and not uses_stdin:
         raise ValueError("structured stdin requires role.stdin: true")
@@ -98,17 +115,25 @@ def invoke_role(role: dict[str, Any], prompt: str, root: Path,
         old = json.loads(response_file.read_text(encoding="utf-8"))
         if old["request_id"] == request_id:
             return dict(old["payload"])
-    output.unlink(missing_ok=True)
-    (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
-    start = time.perf_counter()
-    code = run_process(arguments, root, folder / "stdout.log", folder / "stderr.log",
-                       prompt=input_text, timeout=role.get("timeout_seconds"))
-    if code:
-        raise RuntimeError(f"CLI exited {code}; see {folder / 'stderr.log'}")
-    text = output.read_text(encoding="utf-8") if output.exists() else (folder / "stdout.log").read_text(encoding="utf-8")
+    receipt_file = folder / "receipt.json"
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8")) if receipt_file.exists() else {}
+    reuse_raw = receipt.get("request_id") == request_id and receipt.get("returncode") == 0
+    elapsed = float(receipt.get("elapsed_seconds", 0)) if reuse_raw else 0.0
+    if not reuse_raw:
+        output.unlink(missing_ok=True)
+        atomic_text(folder / "prompt.txt", prompt)
+        start = time.perf_counter()
+        code = run_process(arguments, root, folder / "stdout.log", folder / "stderr.log",
+                           prompt=input_text, timeout=role.get("timeout_seconds"))
+        elapsed = time.perf_counter() - start
+        write_json(receipt_file, {"request_id": request_id, "returncode": code,
+                                 "elapsed_seconds": elapsed})
+        if code:
+            raise AgentCommandError(f"CLI exited {code}; see {folder / 'stderr.log'}")
+    text = output.read_text(encoding="utf-8-sig") if output.exists() else (folder / "stdout.log").read_text(encoding="utf-8-sig")
     payload, metadata = decode_payload(text)
     write_json(response_file, {"request_id": request_id, "payload": payload,
-                              "elapsed_seconds": time.perf_counter() - start,
+                              "elapsed_seconds": elapsed, "recovered_saved_output": reuse_raw,
                               "metadata": metadata,
                               "requested_model": role.get("model"),
                               "note": "Unreported costs/usage are unknown, never assumed zero."})
@@ -128,6 +153,8 @@ def apply_files(payload: dict[str, Any], root: Path, folder: Path) -> list[dict[
     planned = []
     for item in items:
         path = (root / item["path"]).resolve()
+        if path == root / "src/n225m_bt/strategies/base.py":
+            raise ValueError("strategy API changes belong to infrastructure work, not generated strategies")
         if not path.is_relative_to(root) or path.suffix != ".py" or not any(path.is_relative_to(base) for base in allowed):
             raise ValueError(f"research implementation cannot write {item['path']}")
         if not isinstance(item["content"], str):
@@ -142,9 +169,7 @@ def apply_files(payload: dict[str, Any], root: Path, folder: Path) -> list[dict[
             backup.parent.mkdir(parents=True, exist_ok=True)
             backup.write_bytes(path.read_bytes())
         path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_name(path.name + ".tmp")
-        temp.write_text(content, encoding="utf-8")
-        temp.replace(path)
+        atomic_text(path, content)
         Path(importlib.util.cache_from_source(str(path))).unlink(missing_ok=True)
         changes.append({"path": relative.as_posix(), "before": before, "after": file_hash(path)})
     write_json(folder / "changes.json", changes)

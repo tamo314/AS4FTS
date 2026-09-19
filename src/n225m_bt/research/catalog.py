@@ -11,6 +11,8 @@ from typing import Any
 def build_catalog(root: Path) -> dict[str, Any]:
     usage_file = root / ".research/component_usage.json"
     usage = json.loads(usage_file.read_text(encoding="utf-8")) if usage_file.exists() else {}
+    references_file = root / ".research/component_references.json"
+    references = json.loads(references_file.read_text(encoding="utf-8")) if references_file.exists() else {}
     entries: list[dict[str, Any]] = []
     warnings: list[str] = []
     source = root / "src"
@@ -48,6 +50,7 @@ def build_catalog(root: Path) -> dict[str, Any]:
                         "path": path.relative_to(root).as_posix(), "signature": signature,
                         "doc": ast.get_docstring(node) or "",
                         "used_by_families": usage.get(metadata.get("id"), []),
+                        "referenced_by_families": references.get(metadata.get("id"), []),
                         "code_sha256": hashlib.sha256(text.encode()).hexdigest(),
                     })
     return {"components": entries, "warnings": warnings}
