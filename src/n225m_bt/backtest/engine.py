@@ -41,6 +41,11 @@ class BacktestEngine:
     def run(self, bars: list[Bar], strategy: Strategy, parameter_hash: str = "", *,
             assume_sorted: bool = False) -> BacktestResult:
         """A batch may reuse already sorted immutable bars; strategy state is per run."""
+        # Optional runtime binding shares the actual run calendar without adding
+        # calendar paths to each parameter point. Older strategies need no hook.
+        bind_runtime = getattr(strategy, "bind_runtime", None)
+        if callable(bind_runtime):
+            bind_runtime(self.classifier)
         ordered = bars if assume_sorted else sorted(bars, key=lambda bar: bar.ts_jst)
         portfolio = Portfolio(
             self.spec, self.config.fees.jpy_per_side_per_contract,
