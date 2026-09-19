@@ -43,12 +43,21 @@ class RollingRange:
 
 @component(id="rolling_mean", kind="feature", summary="Streaming arithmetic mean with bounded state", tags=["trend", "rolling", "causal"])
 class RollingMean:
+    """Read mean BEFORE update(value) to exclude the current observation."""
     def __init__(self, window: int) -> None:
         if window < 1:
             raise ValueError("window must be positive")
         self.window = window
         self.values: deque[float] = deque()
         self.total = 0.0
+
+    @property
+    def ready(self) -> bool:
+        return len(self.values) >= self.window
+
+    @property
+    def mean(self) -> float | None:
+        return self.total / self.window if self.ready else None
 
     def update(self, value: float) -> float | None:
         self.values.append(value)

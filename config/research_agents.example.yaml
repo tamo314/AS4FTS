@@ -16,15 +16,24 @@ context_families: 3
 # batch_timeout_seconds: 3600
 roles:
   designer:
-    model: null  # Replace null with "your actual high-cost model ID".
-    argv: [codex, exec, --sandbox, read-only, --model, '{model}', -o, '{output}', '-']
+    model: gpt-5.6-sol  # Replace null with "your actual high-cost model ID".
+    argv: ['C:\Users\tamot\AppData\Roaming\npm\codex.CMD', exec, --sandbox, read-only, --model, '{model}', -o, '{output}', '-']
     stdin: true
-    timeout_seconds: 600
+    timeout_seconds: 7200
   implementer:
-    model: null  # Replace null with "your actual low-cost model ID".
-    argv: [claude, '-p', '{prompt}', --model, '{model}', --output-format, json]
-    stdin: false
-    timeout_seconds: 600
+    model: sonnet
+    argv:
+      - claude
+      - '-p'
+      - --model
+      - '{model}'
+      - --input-format
+      - text
+      - --output-format
+      - json
+    stdin: true
+    stdin_format: text
+    timeout_seconds: 7200
 # Use your configured Antigravity command/wrapper by replacing argv; keep {model}
 # where the CLI accepts its model ID. No CLI installation or login is performed.
 # To let AI design from the very first family, set initial_family: null.

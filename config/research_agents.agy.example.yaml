@@ -11,12 +11,12 @@ max_repairs: 2
 context_families: 3
 roles:
   designer:
-    model: null  # Keep your configured model ID and resolved executable path.
-    argv: [codex, exec, --sandbox, read-only, --model, '{model}', -o, '{output}', '-']
+    model: gpt-5.6-sol  # Replace null with "your actual high-cost model ID".
+    argv: ['C:\Users\tamot\AppData\Roaming\npm\codex.CMD', exec, --sandbox, read-only, --model, '{model}', -o, '{output}', '-']
     stdin: true
     timeout_seconds: 7200
   implementer:
-    model: null  # Select an exact slug listed by `agy models` to pin the model.
+    model: gemini-3.8-flash-medium  # Select an exact slug listed by `agy models` to pin the model.
     argv:
       - agy  # On Windows use the resolved full path when necessary.
       - --input-format
